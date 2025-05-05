@@ -1,0 +1,32 @@
+Kubernetes Architecture
+
+Kubernetes is a distributed system that orchestrates containerized applications. It consists of two main parts:
+
+1. Control Plane:
+The control plane manages the cluster and consists of several components:
+API Server: The entry point for all requests to the Kubernetes API.
+etcd: A distributed key-value store that stores the cluster's configuration data.
+Scheduler: Decides which node to run a Pod on.
+Controller Manager: Manages various controllers that maintain the desired state of the cluster.
+
+2. Nodes:
+Nodes are the worker machines that run the containerized applications. Each node contains the following components:
+Kubelet: An agent that communicates with the control plane and manages the Pods on the node.
+Kube-proxy: A network proxy that handles network communication for the Pods.
+Container Runtime: The software that runs the containers (e.g., Docker).
+
+Key Concepts:
+Pods: The smallest deployable unit in Kubernetes, representing a running process.
+
+Services: An abstraction that defines a logical set of Pods and enables communication with them.
+
+Deployments: A way to manage the desired state of Pods, enabling declarative updates and rollbacks.
+
+This architecture enables Kubernetes to provide features like:
+Scalability: Easily scale applications by adding or removing Pods and nodes.
+
+High Availability: Ensure application uptime by running multiple replicas of Pods across different nodes.
+
+Fault Tolerance: Automatically replace failing Pods and nodes.
+
+Service Discovery: Enable Pods to discover and communicate with each other.
