@@ -1,0 +1,148 @@
+Setting up a Kubernetes environment in an on-premise data center requires careful planning and execution. Unlike managed cloud offerings, you are responsible for provisioning and configuring the underlying infrastructure. This guide outlines the initial steps using kubeadm, a widely used tool for bootstrapping Kubernetes clusters.   
+
+Prerequisites:
+
+Before you begin, ensure you have the following:
+
+Physical or Virtual Machines: Several machines to act as Kubernetes nodes (at least one control plane node and one or more worker nodes).   
+Operating System: A compatible Linux distribution installed on all machines (e.g., Ubuntu, CentOS, Debian). It's recommended to use a recent LTS version.   
+Hardware Resources:
+Control Plane Node: Minimum 2 CPUs and 2GB of RAM (more is recommended for production).   
+Worker Nodes: Minimum 1 CPU and 1GB of RAM (more is recommended based on your workload).
+Sufficient disk space on all nodes.
+Network Connectivity: Full network connectivity between all machines in the cluster. This includes:
+Nodes must be able to reach each other.
+Nodes need internet access to pull container images and Kubernetes components (or access to a local mirror/registry).
+Certain ports need to be open between nodes (details vary depending on the chosen networking plugin).
+Unique Identifiers: Each node must have a unique hostname, MAC address, and product_uuid.   
+Sudo Privileges: A user account with sudo privileges on all machines.   
+Recommended Tools for On-Premise Setup:
+
+While several tools exist, kubeadm is a popular choice for its simplicity in bootstrapping a cluster. Other options include:   
+
+k3s: A lightweight Kubernetes distribution suitable for edge or resource-constrained environments.   
+Rancher Kubernetes Engine (RKE): A certified Kubernetes distribution that simplifies installation and management.   
+kubespray: An Ansible-based tool for deploying Kubernetes clusters, offering more customization.   
+This guide focuses on using kubeadm.
+
+Initial Setup Steps Using Kubeadm:
+
+The following steps should be performed on all machines intended to be part of the Kubernetes cluster unless otherwise specified:
+
+Step 1: Prepare the Nodes
+
+Update System Packages:
+
+Bash
+
+sudo apt update && sudo apt upgrade -y
+(Replace apt with your distribution's package manager if not using Debian/Ubuntu)
+
+ Disable Swap: Kubernetes components, particularly the kubelet, have issues with swap enabled.   
+
+Bash
+
+sudo swapoff -a
+sudo sed -i '/ swap / s/^/#/' /etc/fstab
+Enable Kernel Modules and Configure Sysctl: Enable necessary kernel modules for networking and configure sysctl parameters required by Kubernetes.
+
+Bash
+
+cat <<EOF | sudo tee /etc/modules-load.d/k8s.conf
+overlay
+br_netfilter
+EOF
+
+sudo modprobe overlay
+sudo modprobe br_netfilter
+
+cat <<EOF | sudo tee /etc/sysctl.d/k8s.conf
+net.bridge.bridge-nf-call-ipables = 1
+net.bridge.bridge-nf-call-ip6tables = 1
+net.ipv4.ip_forward = 1
+EOF
+
+sudo sysctl --system
+ Install a Container Runtime: Kubernetes uses a container runtime to run containers. Popular choices include containerd, CRI-O, or Docker (with the cri-dockerd shim). It is recommended to use a runtime that implements the Container Runtime Interface (CRI). Here's an example for installing containerd:   
+
+Bash
+
+sudo apt install -y containerd
+sudo mkdir -p /etc/containerd
+sudo containerd config default | sudo tee /etc/containerd/config.toml
+# Modify the containerd config to use systemd cgroup driver
+sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+sudo systemctl restart containerd
+sudo systemctl enable containerd
+(Refer to the documentation for your chosen runtime for specific installation and configuration steps).   
+
+ Install Kubeadm, Kubelet, and Kubectl: Install the Kubernetes command-line tools.   
+
+Bash
+
+sudo apt-get update
+sudo apt-get install -y apt-transport-https ca-certificates curl gnupg
+
+# Add the Kubernetes API key
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.29/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+# Add the Kubernetes repository
+echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.29/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list
+
+sudo apt-get update
+sudo apt-get install -y kubelet kubeadm kubectl
+sudo apt-mark hold kubelet kubeadm kubectl
+(Adjust the Kubernetes version in the URL and the apt-mark hold command as needed).
+
+Step 2: Initialize the Control Plane (Perform ONLY on the designated control plane node)
+
+Initialize the Kubernetes Cluster: Use kubeadm init to set up the control plane. You need to specify the Pod network CIDR, which will be used by your chosen networking add-on.   
+
+Bash
+
+sudo kubeadm init --pod-network-cidr=<your-pod-network-cidr> --apiserver-advertise-address=<control-plane-node-ip>
+Replace <your-pod-network-cidr> with the CIDR range for your Pod network (e.g., 10.244.0.0/16 for Flannel) and <control-plane-node-ip> with the IP address of your control plane node.
+
+Configure Kubectl Access: After the initialization is complete, the output will provide instructions on how to configure kubectl to interact with the cluster. This typically involves copying the admin.conf file.
+
+Bash
+
+mkdir -p $HOME/.kube
+sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+sudo chown $(id -u):$(id -g) $HOME/.kube/config
+ Deploy a Pod Network Add-on: A network add-on is required for Pods to communicate with each other. Common options include Flannel, Calico, and Cilium. Apply the manifest for your chosen network add-on. For example, for Flannel:   
+
+Bash
+
+kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
+(Refer to the documentation of your chosen network add-on for the correct manifest URL and any specific configurations).
+
+Step 3: Join Worker Nodes to the Cluster (Perform on each worker node)
+
+Get the Join Command: On the control plane node, get the kubeadm join command. This command includes the necessary token and CA certificate hash.
+
+Bash
+
+sudo kubeadm token create --print-join-command
+Join the Worker Node: On each worker node, run the join command obtained from the control plane.
+
+Bash
+
+sudo <output-from-kubeadm-token-create>
+Step 4: Verify the Cluster
+
+On the control plane node, check the status of your nodes:
+
+Bash
+
+kubectl get nodes
+Initially, the nodes might be in a NotReady state until the networking add-on is fully deployed and the kubelet on the worker nodes connects to the control plane. Eventually, all nodes should transition to a Ready status.
+
+Next Steps:
+
+Once your basic Kubernetes cluster is up and running, you can start deploying applications, exploring Kubernetes concepts like Deployments, Services, and Pods, and considering additional configurations for a production environment, such as:
+
+Setting up a highly available control plane.
+Implementing persistent storage solutions.
+Configuring ingress controllers for external access to applications.
+Setting up monitoring and logging.
+This guide provides a fundamental initial setup using kubeadm. The specifics of your on-premise environment and workload requirements may necessitate further customization and configuration. Always refer to the official Kubernetes documentation and the documentation of your chosen tools and add-ons for detailed and up-to-date information.
